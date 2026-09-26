@@ -1,0 +1,124 @@
+randomToolBox 專案開發對話紀錄
+================================
+
+【使用者】
+目前的專案是空白模板，我想做一個簡單的隨機選擇工具箱，包含輪盤（經典）、硬幣（簡單決策）、隨機排序 這三個功能，然後可以自訂選項、動畫時間、歷史紀錄等等
+
+【Claude】
+（進入 Plan Mode，探索專案結構、確認 iOS 27 / SwiftUI 新 API，詢問使用者四個關鍵決策：
+1. 選項清單模型 → 使用者選「共用清單，可建多組」
+2. 資料儲存方式 → 使用者選「SwiftData（@Model + @Query）」
+3. 附加功能 → 使用者選「權重機率」「不重複抽」「觸覺回饋」
+4. 介面語言 → 使用者選「String Catalog，繁中為主語言」
+寫出完整實作計畫並執行）
+
+實作內容：
+- Model/Models.swift：OptionList / OptionItem / DrawRecord 三個 SwiftData model，Tool enum
+- Model/RandomEngine.swift：加權抽選、洗牌的純函式邏輯
+- Wheel/SpinEngine.swift + WheelView.swift：自訂 @Observable 引擎逐幀驅動轉盤角度，Canvas 手繪扇形，支援權重與不重複抽模式，搭配 haptic
+- Coin/CoinView.swift：keyframeAnimator 驅動 3D 翻轉硬幣
+- Shuffle/ShuffleView.swift：清單洗牌動畫
+- History/HistoryView.swift：歷史紀錄，可依工具篩選、清除
+- Settings/SettingsView.swift、ListManagerView.swift、ListEditorView.swift：全域設定、清單 CRUD
+- ContentView.swift 改為 TabView，首次啟動自動塞入範例清單
+- 建立 Localizable.xcstrings（繁中為來源語言）
+
+模擬器驗證：五個分頁功能正常、輪盤指針結果一致、抽選與紀錄運作正常。
+提醒使用者：專案 Development Language 仍是英文，需要手動在 Xcode 內改成 Chinese (Traditional)。
+
+--------------------------------
+
+【使用者】
+我這邊看也是置中彈出，可能要麻煩你再確認一下
+
+（此為前次修正硬幣圖片與輪盤「不重複抽」bug 後，接續處理清單刪除確認對話框的置中彈出問題）
+
+【Claude】
+用 accessibility hierarchy 直接檢查確認：`.confirmationDialog` 從 List 的 `.swipeActions` 按鈕觸發時，因為觸發瞬間按鈕本身正在收合消失，系統把它退化成殘缺的置中 popover，直接把「取消」按鈕整個丟掉（hierarchy 搜尋「取消」零筆比對）。
+修法：把 `.confirmationDialog` 改成 `.alert`（本身就是置中卡片、不依賴會消失的錨點），兩顆按鈕穩定顯示。模擬器上重新驗證：「取消」按鈕確實存在且可點擊，清單未被誤刪。
+
+--------------------------------
+
+【使用者】
+好，然後我想加入抽獎箱功能，獎池清單共用，做成可以抽出指定數量的選項，並將原有的設定移至右上角。
+另外有兩個小地方需要更新：硬幣設定移至硬幣頁，清單加入移除功能（目前的只能移除選項，需要加入的是整個清單移除）
+
+【Claude】
+（進入 Plan Mode，詢問三個關鍵決策：抽獎機率是否沿用權重、硬幣頁是否也需要齒輪、刪除清單是否需要確認對話框，使用者全部選擇「是／沿用」後動手）
+
+實作內容：
+- Model/Models.swift：Tool enum 加入 .lottery
+- Settings/ListPickerMenu.swift：抽出共用的清單選擇 Menu 元件，讓輪盤/排序/抽獎箱共用
+- Lottery/LotteryBoxView.swift：新工具，重用 RandomEngine.weightedPick 做「加權不放回」抽樣，逐個揭曉並觸發觸覺回饋
+- Settings/SettingsView.swift：新增 settingsToolbarButton() 共用 ViewModifier，四個工具頁右上角統一放齒輪圖示開啟全域設定；移除硬幣專屬欄位
+- Coin/CoinView.swift：正反面文字改成頁面上可直接編輯的 TextField
+- Settings/ListManagerView.swift：滑動清單列出現明確「刪除清單」按鈕 + 確認對話框
+- History/HistoryView.swift：新增抽獎箱圖示與篩選分段，右上角同時保留清除全部與齒輪
+- ContentView.swift：Tab 從「輪盤/硬幣/排序/紀錄/設定」改為「輪盤/硬幣/排序/抽獎箱/紀錄」
+
+模擬器驗證：抽獎箱加權不放回抽選正常、四個工具頁齒輪皆可開啟設定、硬幣頁內嵌文字正常、清單刪除確認流程正常、紀錄篩選正常。
+
+--------------------------------
+
+【使用者】
+[附上兩個字體檔 GenSenRounded2TW-L.otf / GenSenRounded2TW-R.otf]
+好的，那還要再麻煩做字體更換，Ｌ作為一般Ｒ作為粗體，這個字體只適用繁體中文，雖然目前沒有其他語言，但可能還是要設定一下，順便確認一下目前輪盤的文字看起來有點小的問題
+
+【Claude】
+用 CoreText 直接檢查字體檔，確認 PostScript name 為 GenSenRounded2TW-L / -R，且兩者共用字族但 R 並未被標記為該字族的 Bold 成員（無法依賴系統自動比對粗體），需手動用兩個名字分別對應「一般」與「粗體」。
+（進入 Plan Mode 確認影響範圍後執行）
+
+實作內容：
+- 把兩個字體檔複製進專案（XcodeWrite 建立佔位檔登記進 project，再用 Bash cp 覆蓋成真正的二進位內容，避免文字介面寫入二進位把字體檔案弄壞）
+- Info.plist 註冊 UIAppFonts
+- 新增 AppFont.swift：regular(_:) / bold(_:) 依語意對應到兩個字重
+- ContentView.swift 加上全域預設字型；randomToolBoxApp.swift 加 UINavigationBar.appearance() 設定導覽列字型
+- 全專案 16 處顯式 .font() 呼叫逐一替換
+- 輪盤扇形標籤從 12pt 的 .caption 換成 15pt 的 .subheadline
+
+過程中意外修掉一個新 bug：換上粗體導覽列字型後，「紀錄」分頁的大標題因為跟置頂的篩選 Picker 疊在一起而糊掉／隱形；修法是把該分頁改成 .navigationBarTitleDisplayMode(.inline)。
+
+--------------------------------
+
+【使用者】
+字體我看怎麼像沒套用，能麻煩你再確認一下嗎
+
+【Claude】
+直接用程式碼檢查執行環境，發現真正原因：AppFont 判斷「是否套用自訂字體」的邏輯用 Bundle.main.preferredLocalizations 檢查是否為 zh-Hant，但這個 API 反映的是「裝置系統語言設定」，不是「App 顯示的內容語言」；專案的 Development Region 仍是英文，導致這個旗標一直悄悄是 false，字體完全沒套用。
+修正：改成直接回傳 true（因為目前 App 100% 文字都是寫死的繁中字面值），並在程式碼留下清楚註解說明未來加其他語言時該怎麼改。
+用 RunCodeSnippet 直接渲染字體圖片比對（因為模擬器截圖的肉眼判斷證實不可靠，同一支 App 前後兩次 subagent 判斷完全相反），確認 300pt 大小下字體圓潤／系統字體尖銳的差異非常明顯，字體確實正確套用；但也誠實告知使用者：這個字體的兩個字重（L/R）本身粗細差異不大，一般 UI 文字大小下跟系統字體的差異會比較細微（主要是筆畫收尾圓不圓角，不是粗細對比）。
+詢問使用者要不要額外加工字重，使用者選擇「維持現狀，保留字體原始設計」。
+
+--------------------------------
+
+【使用者】
+清單管理的選項好像壞了，清單點進去還是清單管理的頁面，要返回才會看到內容，但沒有內容的空白清單就會變成警告符號
+
+【Claude】
+在模擬器上直接重現問題，用 accessibility hierarchy 確認具體現象：點擊清單列後導覽列的返回按鈕標題已經更新成目的地名稱（代表 push 動作在資料層面已觸發），但畫面內容沒有跟著換；空清單的目的地畫面甚至直接渲染失敗變成一個 exclamationmark.triangle.fill 警告圖示。
+
+第一輪懷疑並修正：ListManagerView 用 SwiftData 的 OptionList 物件本身當作 NavigationLink(value:) 的 Hashable 值，物件的 hash 會隨關聯的 items 資料變動而不穩定，改成用穩定的 UUID（list.id）代替。
+
+驗證後發現問題依然存在，於是重新在模擬器上仔細重現（並排除「畫面轉場動畫還沒跑完就截圖」這個誤判可能性，確認等待夠久後 bug 仍在），找到真正根因：
+SettingsView 用一般的 NavigationLink { ListManagerView() } 把清單管理頁「推」進自己既有的導覽堆疊，但 ListManagerView 內部又用 value-based 的 NavigationLink(value:) + .navigationDestination(for:) 做二層導覽 —— 這兩種導覽機制混在同一個 stack 裡不相容。輪盤/硬幣/排序/抽獎箱那幾頁本來就是用 .sheet { NavigationStack { ListManagerView() } }（讓 ListManagerView 自己當一個全新 stack 的根），所以沒事；只有從「設定」頁進去這條路徑才會出問題。
+
+修法：把 SettingsView 的「管理清單」也改成跟其他頁一致的 .sheet 呈現方式，四個入口統一。
+
+模擬器完整驗證（含等待動畫完成後才截圖）：兩個不同入口（設定頁齒輪、以及輪盤頁清單選單裡的「管理清單…」）點擊清單列都能第一次點擊就正確跳轉，空清單編輯正常運作，新增選項成功，返回導覽正常，全程沒有再出現警告圖示。
+
+--------------------------------
+
+【使用者】
+將目前的對話存檔，存成桌面的 conversation.txt
+
+【Claude】
+（桌面權限問題，寫入失敗）
+
+【使用者】
+桌面沒看到，猜可能是權限問題，麻煩你改存到專案根目錄
+
+【Claude】
+確認專案根目錄可寫入，將對話紀錄存為 conversation.txt。
+
+================================
+（紀錄結束）
